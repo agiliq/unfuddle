@@ -2,7 +2,7 @@
 import getpass
 import simplejson
 import sys
-import urllib2
+import urllib, urllib2
 
 from datetime import datetime, date
 
@@ -24,6 +24,36 @@ if not ACCOUNT_DETAILS['username']:
 
 if not ACCOUNT_DETAILS['password']:
     ACCOUNT_DETAILS['password'] = getpass.getpass()
+
+
+class BasicAuth(urllib.FancyURLopener):
+    def __init__(self, *args, **kwargs):
+        urllib.FancyURLopener.__init__(self, *args, **kwargs)
+        self.maxtries = 2
+        
+    def prompt_user_passwd(self, host, realm):
+        print 'Authentication failed please enter your username/password again'
+        ACCOUNT_DETAILS['username'] = raw_input('Username: ')
+        ACCOUNT_DETAILS['password'] = getpass.getpass()
+        return ACCOUNT_DETAILS['username'], ACCOUNT_DETAILS['password']
+
+    def http_error_401(self, url, fp, errcode, errmsg, headers, data=None):
+        """Error 401 -- authentication required. This function supports Basic authentication only."""
+        self.tries += 1
+        if self.maxtries and self.tries >= self.maxtries:
+            self.tries = 0
+            return self.http_error_default(url, fp, 500, "HTTPS Basic Auth timed out after "+str(self.maxtries)+" attempts.", headers)
+        return urllib.FancyURLopener.http_error_401(self, url, fp, errcode, errmsg, headers, data)
+        
+        
+def valid_auth():
+    url = 'https://%s.unfuddle.com/api/v1/projects/' % (ACCOUNT_DETAILS['account'])
+
+    opener = BasicAuth() 
+    opener.addheaders = [('Content-Type', 'application/xml'), ('Accept', 'application/json')] 
+    
+    response = opener.open(url)
+    return response.code == 200
 
 
 class Unfuddle(object):
@@ -153,4 +183,7 @@ def get_ticket_report():
     """
 
 if __name__ == '__main__':
-    get_ticket_report()
+    if valid_auth():
+        get_ticket_report()
+    else:
+        print 'Authentication failed..!!'
